@@ -16,8 +16,10 @@
 | **Dispatch key** | _[FILL: PrivateUse1 or custom]_ |
 | **Evaluation date** | _[FILL: date]_ |
 | **Evaluator** | _[FILL: human or agent]_ |
+| **torch-air version** | _[FILL: read from VERSION in torch-air repo, or git describe --tags --always]_ |
+| **Model** | _[FILL: AI model name used to generate this report]_ |
 | **Source** | _[FILL: repo URL]_ |
-| **PyTorch base** | _[FILL: version]_ |
+| **PyTorch version** | _[FILL: PyTorch version supported/tested by the backend — from setup.py, pyproject.toml, requirements, README compatibility table, or CI config]_ |
 | **Fork base** | _[FILL: version/commit, or omit row for PU1]_ |
 
 

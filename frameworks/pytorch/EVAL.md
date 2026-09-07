@@ -13,7 +13,7 @@ the latest APIs, hooks, and registration points.
 
 **Ground Rules (internal skill rules -- do NOT include in generated reports):**
 1. **Preserve structure**: Section numbering, table format, column layout, scoring model, level assignments, and markdown structure must NOT change during refinement. Only row-level content (add/update/remove items within existing tables) may change.
-2. **Summary + level table at top**: Every generated document must start with the Executive Summary and Section Scores table (sorted by level) immediately after the header metadata. No report is valid without it.
+2. **Summary + level table at top**: Every generated document must start with the Executive Summary and Section Scores table (sorted by level) immediately after the header metadata. Metadata must include torch-air version and model.
 3. **No section reordering**: Sections stay in their original document order. Only the summary table sorts by level. Template tables are pre-sorted by priority (1 first, then 2, then 3) -- preserve this order in generated reports.
 4. **Log changes**: After refinement, output a short changelog (added N items, updated M items, removed K items) so the user can review before evaluation proceeds.
 5. **No meta-content in output**: These ground rules, skill instructions, agent instructions, procedural steps (e.g., "The agent should...", "Check if...", "Search for...", "Once detected, the agent should..."), scoring model explanations, calculation formulas, and internal process details must never appear in the final generated report. When copying templates, strip all instructional prose, the Scoring Model section, and the Calculation section -- keep only headings, fillable tables, and filled-in content. The report is a standalone evaluation document for the reader, not a how-to guide for the evaluator.
@@ -360,3 +360,14 @@ To free disk space, you may remove it later: rm -rf /tmp/pytorch-<version>
 ```
 
 Do NOT auto-delete the cloned source — the user decides when to clean up.
+
+---
+
+## Part 2: Security Readiness (optional)
+
+Security evaluation is a **dimension** of the PyTorch framework, not a separate
+framework. Run only when `--security` or `--all` is specified.
+
+Read `frameworks/pytorch/security/EVAL.md` and follow all phases.
+Use `frameworks/pytorch/security/checklist.md` as the template.
+Write output to `torch-air-report/torch_security_readiness_report_<backend>.md`.

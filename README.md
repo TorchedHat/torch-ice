@@ -1,6 +1,6 @@
 # Torch Accelerator Integration Readiness (AIR)
 
-A checklist-based evaluation tool that measures how well a hardware accelerator integrates with PyTorch. It probes source code for device registration, operator coverage, memory management, distributed training, profiling, and more — then produces a scored readiness report.
+A checklist-based evaluation tool that measures how well a hardware accelerator integrates with PyTorch — and whether its security posture is suitable for production deployment. It probes source code for device registration, operator coverage, memory management, distributed training, profiling, and more, then produces scored readiness reports. An optional security dimension covers multi-tenant isolation, memory encryption, transit security, data scrubbing, firmware, and the PyTorch integration surface.
 
 ## Workflow Process Outline:
 - Skill Execution & PR Submission: The accelerator backend executes the skill and submits the comprehensive readiness report as a Pull Request (PR) to PyTorch-AIR repo.
@@ -17,10 +17,11 @@ Given a backend name, source path, or GitHub URL, AIR:
 
 1. Locates the backend source code (local, pip, or GitHub)
 2. Detects the integration path (PrivateUse1 or Fork)
-3. Probes 21 sections covering the full PyTorch integration surface
-4. Scores each item and computes a weighted readiness percentage
-5. Identifies features the backend built that could be upstreamed to PyTorch core
-6. Writes a standalone markdown report
+3. Probes 21 functional sections covering the full PyTorch integration surface
+4. Optionally evaluates 6 security domains (37 items) for production deployment safety
+5. Scores each item and computes a weighted readiness percentage
+6. Identifies features the backend built that could be upstreamed to PyTorch core
+7. Writes standalone markdown reports
 
 ## Installation
 
@@ -68,22 +69,28 @@ For team or project setups, declare the marketplace and plugin in
 Once installed, invoke the skill (namespaced by the plugin):
 
 ```
-/torch-air:torch-accelerator-readiness <backend>
+/torch-air:torch-accelerator-readiness <backend>              # functional only (default)
+/torch-air:torch-accelerator-readiness <backend> --security   # security only
+/torch-air:torch-accelerator-readiness <backend> --all        # both
 ```
 
 Examples:
 
 ```
 /torch-air:torch-accelerator-readiness <accelerator-name>
+/torch-air:torch-accelerator-readiness <accelerator-name> --security
+/torch-air:torch-accelerator-readiness <accelerator-name> --all
 /torch-air:torch-accelerator-readiness /path/to/backend/source
-/torch-air:torch-accelerator-readiness https://github.com/org/torch-backend
+/torch-air:torch-accelerator-readiness https://github.com/org/torch-backend --all
 ```
 
 ## Report Structure
 
-Each report contains:
+### Integration Readiness Report
 
-- **Metadata table** — backend name, backend version, integration path, dispatch key, PyTorch version
+Each integration report contains:
+
+- **Metadata table** — backend name, backend version, integration path, dispatch key, PyTorch version, torch-air version, model
 - **Executive summary** — overall readiness, notable insights, strengths, gaps
 - **Section scores** — per-section breakdown sorted by level
 - **Upstream candidates** — features generic enough to benefit all backends
@@ -91,7 +98,21 @@ Each report contains:
 - **Registration quick reference** — summary of all PU1/Fork registration points
 - **Sources** — links to PyTorch docs, tutorials, and references
 
+### Security Readiness Report
+
+Each security report contains:
+
+- **Metadata table** — accelerator name, backend package, version, deployment model, PyTorch version, torch-air version, model
+- **Executive summary** — overall security readiness percentage, strengths, gaps
+- **Domain scores** — per-domain breakdown sorted by level with weighted percentages
+- **37 scored items** across 6 security domains with points and evidence
+- **Gap analysis** — CRITICAL / HIGH / MEDIUM / LOW prioritized findings
+- **Recommendations** — actionable next steps and vendor engagement topics
+- **Evidence sources** — all referenced URLs and documents
+
 ## What It Evaluates
+
+### Functional Integration (21 sections)
 
 21 sections grouped into 3 levels. Level 1 carries the most weight in the overall readiness score.
 
@@ -131,7 +152,22 @@ Each report contains:
 | Ecosystem Compatibility | Compatibility with torchvision, torchaudio, HuggingFace, and other libraries |
 | Additional PyTorch APIs | Sparse tensors, quantization, nested tensors, and other API surfaces |
 
+### Security (6 domains, 37 items)
+
+Security is an evaluation dimension of the PyTorch framework, nested under `frameworks/pytorch/security/`.
+
+| Domain | ID Prefix | Level | What It Covers |
+|--------|-----------|-------|----------------|
+| Multi-Tenant Isolation | SEC-MT | 1 | HW partitioning, SMMU, compute/memory/fault/temporal isolation |
+| Device Memory Encryption | SEC-ME | 1 | At-rest encryption, HW Root of Trust, key management |
+| Data Scrubbing | SEC-DS | 1 | Memory zeroing, KV cache clearing, verification |
+| Host-Device Transit Security | SEC-HT | 2 | PCIe encryption, buffer protection, attestation |
+| Firmware & Driver | SEC-FD | 2 | Secure boot, SAST, CVE process, DoS resistance |
+| PyTorch Integration Surface | SEC-PI | 3 | Leak detection, input validation, CRCR integration |
+
 ## Scoring
+
+Both functional and security evaluations use the same numeric scoring model.
 
 ### Row Scoring
 
@@ -146,17 +182,15 @@ Each checklist row is scored in the Points column:
 
 Every row has a max score of **2** and a **priority** (1 = critical, 2 = important, 3 = nice-to-have). The priority determines the row's weight: `weight = 1 / priority` (so P1 = 1.0, P2 = 0.5, P3 = 0.333). Priorities are fixed in the template and consistent across all evaluations.
 
-### Section Score
+### Section / Domain Score
 
-The **max points** for a section is the weighted sum assuming every non-N/A row scores a perfect 2:
+The **max points** for a section/domain is the weighted sum assuming every non-N/A row scores a perfect 2:
 
 ```
 max_pts = sum(2 * w_i)   for each non-N/A row
 ```
 
-For example, a section with 3 P1 rows, 4 P2 rows, and 2 P3 rows has `max_pts = 3×2×1.0 + 4×2×0.5 + 2×2×0.333 = 11.3`.
-
-The **section percentage** is:
+The **section/domain percentage** is:
 
 ```
 section_pct = sum(score_i * w_i) / max_pts * 100
@@ -166,7 +200,7 @@ where `score_i` is the row's score (0, 1, or 2), `w_i = 1 / priority_i`, and N/A
 
 ### Overall Readiness
 
-Sections are grouped into 3 weighted tiers:
+Sections/domains are grouped into 3 weighted tiers:
 
 | Tier | Weight |
 |------|--------|
@@ -179,7 +213,7 @@ weight = 1 / tier
 Readiness (%) = (sum(section_pct × weight) / sum(weight)) × 100
 ```
 
-Tier 1 covers foundational integration (device registration, operators, memory). A backend scoring 100% on Tier 1 but 0% on Tier 3 would still report ~55% readiness. The weighting reflects that foundational integration matters more than ecosystem polish.
+Tier 1 covers foundational concerns (device registration, operators and memory for functional; isolation, encryption, and scrubbing for security). The weighting reflects that foundational readiness matters more than ecosystem polish.
 
 
 ## Output
@@ -187,23 +221,28 @@ Tier 1 covers foundational integration (device registration, operators, memory).
 Reports are written to `torch-air-report/`:
 
 ```
-torch-air-report/torch_readiness_report_<backend>.md
+torch-air-report/torch_readiness_report_<backend>.md      # functional integration
+torch-air-report/torch_security_readiness_report_<backend>.md   # security posture
 ```
 
 ## Repository Structure
 
 ```
 torch-air/
-├── SKILL.md                          # Orchestrator: input parsing, dispatch, scoring, summary
+├── VERSION                           # torch-air release version (recorded in reports)
+├── SKILL.md                          # Orchestrator skill (functional + security flags)
+|
 ├── frameworks/
-│   ├── pytorch/
-│   │   ├── EVAL.md                   # PyTorch evaluation phases and probing instructions
-│   │   ├── checklist.md              # PyTorch readiness checklist template (open-source)
-│   │   ├── checklist_private.md      # Scored checklist for closed-source backends
-│   │   └── research_template_private.md  # Narrative research template for private backends
+│   └── pytorch/
+│       ├── EVAL.md                   # PyTorch evaluation phases (Part 1: functional, Part 2: security)
+│       ├── checklist.md              # Functional readiness checklist backends
+│       ├── research_template_private.md  # Narrative research template for private backends
+│       └── security/
+│           ├── EVAL.md               # Security evaluation phases and scoring rules
+│           └── checklist.md          # Security readiness checklist template (37 items)
 ├── crcr/
 │   └── crcr-l1-onboarding.md        # CRCR Level 1 onboarding guide
 └── README.md
 ```
 
-Adding a new framework: create `frameworks/<name>/` with `EVAL.md` (probing instructions) and `checklist.md` (fillable template), then add the framework to the dispatch table in `SKILL.md`.
+Adding a new framework: create `frameworks/<name>/` with `EVAL.md` and `checklist.md`, then add the framework to the dispatch table in `SKILL.md`. Security dimensions for a framework live under `frameworks/<name>/security/`.
