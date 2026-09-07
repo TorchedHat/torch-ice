@@ -16,6 +16,18 @@ The user provides one of:
 - A source path (e.g., `/home/user/torch_npu`)
 - A GitHub URL
 
+Optionally, the user may append one of these exact **mode** keywords after the backend to scope the evaluation:
+
+| Mode keyword | Behavior | Reports produced |
+|---|---|---|
+| _(none)_ | Full PyTorch integration evaluation only | `torch_readiness_report_<backend>.md` |
+| `inference` | Inference workload only, evaluated fresh | `workload_inference_<backend>.md` |
+| `training` | Training workload only, evaluated fresh | `workload_training_<backend>.md` |
+| `training and inference` | Training + inference workloads only, no full eval | `workload_training_<backend>.md`, `workload_inference_<backend>.md` |
+| `all` | Full PyTorch eval + both workloads (workloads derived from the full eval) | `torch_readiness_report_<backend>.md`, `workload_training_<backend>.md`, `workload_inference_<backend>.md` |
+
+These 5 modes are mutually exclusive -- pick exactly one based on the user's exact wording. Do not run the full PyTorch checklist unless the mode is _(none)_ or `all`.
+
 Optional flags:
 - `--pytorch-version <version>` (e.g., `--pytorch-version 2.4.0`)
   Evaluate the backend against a specific PyTorch upstream version instead
@@ -24,7 +36,47 @@ Optional flags:
   the PyTorch version from the backend's own dependency metadata, falling
   back to the latest stable PyTorch release.
 
-If no input is provided, ask for one.
+If no input is provided, ask for one. If a mode keyword is given but no backend is provided, ask for the backend.
+
+Also detect the **backend version** (from `pip show`, `git describe --tags`, or `gh release list`) -- this is used to match against existing reports.
+
+## Workload-Scoped Evaluation
+
+Dispatch strictly on the mode keyword from Inputs:
+
+- **_(none)_** -> run full PyTorch evaluation only (Path A). Stop.
+- **`inference`** -> run Workload Resolution for `inference` only.
+- **`training`** -> run Workload Resolution for `training` only.
+- **`training and inference`** -> run Workload Resolution independently for `training` and for `inference`. No full eval.
+- **`all`** -> run Path A (full eval), then derive both workload reports from that output.
+
+### Workload Resolution (used by `inference`, `training`, `training and inference`)
+
+For the requested workload type:
+
+1. Check `torch-air-report/` for an existing full PyTorch report matching the backend **and version** (pattern: `torch_readiness_report_<backend>.md` or `torch_readiness_research_<backend>.md`; verify its `Backend version` field matches the detected version).
+2. **Matching report exists** -- derive from it:
+   - Read the existing report
+   - Extract scores for sections relevant to the workload
+   - Recompute section scores and overall readiness on extracted sections only (same scoring formula)
+   - Write `torch-air-report/workload_<type>_<backend>.md`
+   - Note in header: "Derived from: `<source_report_filename>` (version: `<version>`)"
+3. **No matching report** -- evaluate fresh:
+   - Select template: `training` -> `frameworks/pytorch/checklist_training.md`, `inference` -> `frameworks/pytorch/checklist_inference.md`
+   - Copy it to `torch-air-report/workload_<type>_<backend>.md`
+   - Run fresh evaluation against the backend source for all rows in the template
+   - Note in header: "Scoped evaluation -- full PyTorch integration report not available"
+
+### Path A: Full evaluation (used by _(none)_ and `all`)
+
+1. Run the full PyTorch evaluation (all rows in `checklist.md`), write `torch-air-report/torch_readiness_report_<backend>.md`
+2. If mode is `all`, derive both workload reports from that freshly generated report:
+   - Extract scores for sections relevant to each workload
+   - Recompute section scores and overall readiness on extracted sections only
+   - Write `torch-air-report/workload_training_<backend>.md` and `torch-air-report/workload_inference_<backend>.md`
+   - Note in each header: "Derived from: `torch_readiness_report_<backend>.md`"
+
+---
 
 ## Output Format -- MANDATORY
 
