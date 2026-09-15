@@ -18,15 +18,14 @@ The user provides one of:
 
 Optionally, the user may append one of these exact **mode** keywords after the backend to scope the evaluation:
 
-| Mode keyword | Behavior | Reports produced |
-|---|---|---|
-| _(none)_ | Full PyTorch integration evaluation only | `torch_readiness_report_<backend>.md` |
-| `inference` | Inference workload only, evaluated fresh | `workload_inference_<backend>.md` |
-| `training` | Training workload only, evaluated fresh | `workload_training_<backend>.md` |
-| `training and inference` | Training + inference workloads only, no full eval | `workload_training_<backend>.md`, `workload_inference_<backend>.md` |
-| `all` | Full PyTorch eval + both workloads (workloads derived from the full eval) | `torch_readiness_report_<backend>.md`, `workload_training_<backend>.md`, `workload_inference_<backend>.md` |
+| Mode keyword | Behavior |
+|---|---|
+| _(none)_ | Full PyTorch integration evaluation only -- no workload summaries |
+| `inference` | Full evaluation + Inference Readiness Summary section |
+| `training` | Full evaluation + Training Readiness Summary section |
+| `both` | Full evaluation + both Training and Inference Readiness Summary sections |
 
-These 5 modes are mutually exclusive -- pick exactly one based on the user's exact wording. Do not run the full PyTorch checklist unless the mode is _(none)_ or `all`.
+All modes run the same full PyTorch evaluation and write a single report: `torch_readiness_report_<backend>.md`. The mode only controls whether workload summary section(s) are added to that report -- it never changes what gets evaluated or produces separate files.
 
 Optional flags:
 - `--pytorch-version <version>` (e.g., `--pytorch-version 2.4.0`)
@@ -40,41 +39,27 @@ If no input is provided, ask for one. If a mode keyword is given but no backend 
 
 Also detect the **backend version** (from `pip show`, `git describe --tags`, or `gh release list`) -- this is used to match against existing reports.
 
-## Workload-Scoped Evaluation
+## Workload Readiness Summaries
 
-Dispatch strictly on the mode keyword from Inputs:
+Always run the full PyTorch evaluation first (all rows in `checklist.md`), fill every row's Points and Notes as usual. Then, based on the mode keyword:
 
-- **_(none)_** -> run full PyTorch evaluation only (Path A). Stop.
-- **`inference`** -> run Workload Resolution for `inference` only.
-- **`training`** -> run Workload Resolution for `training` only.
-- **`training and inference`** -> run Workload Resolution independently for `training` and for `inference`. No full eval.
-- **`all`** -> run Path A (full eval), then derive both workload reports from that output.
+- **_(none)_** -- do not add any workload summary. Report is done.
+- **`inference`** -- add a **Inference Readiness Summary** subsection.
+- **`training`** -- add a **Training Readiness Summary** subsection.
+- **`both`** -- add both subsections.
 
-### Workload Resolution (used by `inference`, `training`, `training and inference`)
+### Computing a workload summary
 
-For the requested workload type:
+For the requested workload, using the already-scored rows in the same report:
 
-1. Check `torch-air-report/` for an existing full PyTorch report matching the backend **and version** (pattern: `torch_readiness_report_<backend>.md` or `torch_readiness_research_<backend>.md`; verify its `Backend version` field matches the detected version).
-2. **Matching report exists** -- derive from it:
-   - Read the existing report
-   - Extract scores for sections relevant to the workload
-   - Recompute section scores and overall readiness on extracted sections only (same scoring formula)
-   - Write `torch-air-report/workload_<type>_<backend>.md`
-   - Note in header: "Derived from: `<source_report_filename>` (version: `<version>`)"
-3. **No matching report** -- evaluate fresh:
-   - Select template: `training` -> `frameworks/pytorch/checklist_training.md`, `inference` -> `frameworks/pytorch/checklist_inference.md`
-   - Copy it to `torch-air-report/workload_<type>_<backend>.md`
-   - Run fresh evaluation against the backend source for all rows in the template
-   - Note in header: "Scoped evaluation -- full PyTorch integration report not available"
+1. Identify which sections/rows are relevant to the workload (e.g., training relies on Autograd, AMP, Distributed Training, Serialization/checkpointing; inference relies on torch.compile/Inductor, Quantization, Serialization/model loading, Dtype Support). Rows/sections irrelevant to the workload are excluded from this calculation.
+2. Recompute overall readiness for just those rows using the same formula (`w_i = 1/priority_i`, `section_pct = sum(score_i*w_i)/sum(max_i*w_i)*100`, `weight_r = 1/level`, weighted average across the included sections).
+3. Write a short narrative: **Overall <Workload> Readiness: X%**, **Key strengths**, **Key gaps**, **Recommendations** -- same structure and tone as the main Executive Summary, but scoped to the workload.
+4. Do **not** print a per-section score table for the workload -- narrative + single percentage only. The full per-row detail already lives in the main checklist below.
 
-### Path A: Full evaluation (used by _(none)_ and `all`)
+### Placement
 
-1. Run the full PyTorch evaluation (all rows in `checklist.md`), write `torch-air-report/torch_readiness_report_<backend>.md`
-2. If mode is `all`, derive both workload reports from that freshly generated report:
-   - Extract scores for sections relevant to each workload
-   - Recompute section scores and overall readiness on extracted sections only
-   - Write `torch-air-report/workload_training_<backend>.md` and `torch-air-report/workload_inference_<backend>.md`
-   - Note in each header: "Derived from: `torch_readiness_report_<backend>.md`"
+Insert the workload summary subsection(s) immediately **above** the "### Section Scores" table, after the main Executive Summary. Order: Executive Summary -> Training Readiness Summary (if requested) -> Inference Readiness Summary (if requested) -> Section Scores.
 
 ---
 
