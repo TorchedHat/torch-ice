@@ -16,6 +16,17 @@ The user provides one of:
 - A source path (e.g., `/home/user/torch_npu`)
 - A GitHub URL
 
+Optionally, the user may append one of these exact **mode** keywords after the backend to scope the evaluation:
+
+| Mode keyword | Behavior |
+|---|---|
+| _(none)_ | Full PyTorch integration evaluation only -- no workload summaries |
+| `inference` | Full evaluation + Inference Readiness Summary section |
+| `training` | Full evaluation + Training Readiness Summary section |
+| `both` | Full evaluation + both Training and Inference Readiness Summary sections |
+
+All modes run the same full PyTorch evaluation and write a single report: `torch_readiness_report_<backend>.md`. The mode only controls whether workload summary section(s) are added to that report -- it never changes what gets evaluated or produces separate files.
+
 Optional flags:
 - `--pytorch-version <version>` (e.g., `--pytorch-version 2.4.0`)
   Evaluate the backend against a specific PyTorch upstream version instead
@@ -24,7 +35,33 @@ Optional flags:
   the PyTorch version from the backend's own dependency metadata, falling
   back to the latest stable PyTorch release.
 
-If no input is provided, ask for one.
+If no input is provided, ask for one. If a mode keyword is given but no backend is provided, ask for the backend.
+
+Also detect the **backend version** (from `pip show`, `git describe --tags`, or `gh release list`) -- this is used to match against existing reports.
+
+## Workload Readiness Summaries
+
+Always run the full PyTorch evaluation first (all rows in `checklist.md`), fill every row's Points and Notes as usual. Then, based on the mode keyword:
+
+- **_(none)_** -- do not add any workload summary. Report is done.
+- **`inference`** -- add a **Inference Readiness Summary** subsection.
+- **`training`** -- add a **Training Readiness Summary** subsection.
+- **`both`** -- add both subsections.
+
+### Computing a workload summary
+
+For the requested workload, using the already-scored rows in the same report:
+
+1. Identify which sections/rows are relevant to the workload (e.g., training relies on Autograd, AMP, Distributed Training, Serialization/checkpointing; inference relies on torch.compile/Inductor, Quantization, Serialization/model loading, Dtype Support). Rows/sections irrelevant to the workload are excluded from this calculation.
+2. Recompute overall readiness for just those rows using the same formula (`w_i = 1/priority_i`, `section_pct = sum(score_i*w_i)/sum(max_i*w_i)*100`, `weight_r = 1/level`, weighted average across the included sections).
+3. Write a short narrative: **Overall <Workload> Readiness: X%**, **Key strengths**, **Key gaps**, **Recommendations** -- same structure and tone as the main Executive Summary, but scoped to the workload.
+4. Do **not** print a per-section score table for the workload -- narrative + single percentage only. The full per-row detail already lives in the main checklist below.
+
+### Placement
+
+Insert the workload summary subsection(s) immediately **above** the "### Section Scores" table, after the main Executive Summary. Order: Executive Summary -> Training Readiness Summary (if requested) -> Inference Readiness Summary (if requested) -> Section Scores.
+
+---
 
 ## Output Format -- MANDATORY
 
