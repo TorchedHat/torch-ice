@@ -190,20 +190,98 @@ Reports are written to `torch-ice-report/`:
 torch-ice-report/torch_readiness_report_<backend>.md
 ```
 
+## Architecture Review
+
+Contributor tooling for reviewing assessment PRs against this repo's own
+conventions lives in
+[`.claude/skills/torch-ice-review/README.md`](.claude/skills/torch-ice-review/README.md).
+
+### Review Agent
+
+Maintainers can request a read-only review from a pull-request conversation
+comment:
+
+```
+@torch-ice-review-agent review error handling and follow up on prior feedback
+```
+
+The command must be the first non-whitespace content on a comment line. Only
+repository owners may add `--force` to request another review of the same PR
+head. Successful forced reviews have a 15-minute cooldown and a maximum of two
+successful runs per PR head. Failures and timeouts consume neither:
+
+```
+@torch-ice-review-agent --force re-check the latest changes
+```
+
+The GitHub Actions workflow accepts only `OWNER`, `MEMBER`, and
+`COLLABORATOR` comments on pull requests. It checks out the trusted default
+branch and the PR head only to read them; it never runs PR code, workflows,
+package hooks, tests, commits, pushes, merges, approvals, or formal
+request-changes reviews.
+
+This agent is separate from the manual architecture-review skill above: that
+skill supports dry runs and optional formal reviews with `--post`; this agent
+posts advisory PR comments only.
+
+The agent dispatches nested framework/dimension assessments, newly added
+top-level skills, or a new framework `EVAL.md` + `checklist.md` pair to the
+assessment checklist plus General Review. All other PRs—including repo-wide
+renames, bug fixes, and improvements that touch existing assessment files—
+receive General Review.
+
+Every invocation retrieves its review memory fresh from the current PR in
+GitHub: metadata, files/diff, review and conversation comments, and trusted
+maintainer feedback. This compact, bounded history helps follow-up reviews
+avoid repeating resolved findings. No database, embeddings service, vector
+store, or persistent external memory is used. The complete textual GitHub diff,
+including lockfiles, vendor code, build logic, generated artifacts, and SVGs,
+is included up to a 160,000-character cap; binary-change metadata is retained.
+Inputs use fixed section budgets under a 256,000-character ceiling (about 64k
+tokens), so metadata and history cannot displace the diff. Reviews are posted
+as Markdown.
+
+Repository administrators must configure the `OPENAI_API_KEY` Actions secret.
+The workflow requires only `contents: read`, `pull-requests: write`, and
+`issues: write`; the write scopes are used for the acknowledgement reaction and
+normal PR conversation comments. OpenAI requests allow 180 seconds and start
+with 6,144 output tokens, with one 8,192-token retry only when the first response
+reaches its output-token limit. PRs labelled `security`, `private`, or
+`do-not-ai-review` are not sent to OpenAI. Repository administrators should
+protect `main` and require designated review for workflow, prompt, and review
+agent script changes.
+
 ## Repository Structure
 
 ```
 torch-ice/
 ├── SKILL.md                          # Orchestrator: input parsing, dispatch, scoring, summary
+├── skills/
+│   └── torch-integration-capability-evaluation/
+│       └── SKILL.md                  # Symlink to ../../SKILL.md (plugin discovery)
+├── .claude/
+│   └── skills/
+│       └── torch-ice-review/
+│           ├── SKILL.md              # Reviews Torch-ICE PRs against checklist.md
+│           ├── checklist.md          # Canonical architecture review checklist
+│           └── README.md             # Usage docs for the architecture review skill
+├── .github/
+│   ├── prompts/
+│   │   ├── torch-ice-review-agent.md # Review Agent behavior and output format
+│   │   └── architecture-review-checklist.md # Symlink to the canonical checklist
+│   ├── scripts/
+│   │   └── torch-ice-review-agent.mjs # GitHub/Responses API integration
+│   └── workflows/
+│       └── torch-ice-review-agent.yml # Maintainer-invoked PR workflow
 ├── frameworks/
-│   ├── pytorch/
-│   │   ├── EVAL.md                   # PyTorch evaluation phases and probing instructions
-│   │   ├── checklist.md              # PyTorch readiness checklist template (open-source)
-│   │   ├── checklist_private.md      # Scored checklist for closed-source backends
-│   │   └── research_template_private.md  # Narrative research template for private backends
+│   └── pytorch/
+│       ├── EVAL.md                   # PyTorch evaluation phases and probing instructions
+│       └── checklist.md              # PyTorch readiness checklist template (open-source)
 ├── crcr/
 │   └── crcr-l1-onboarding.md        # CRCR Level 1 onboarding guide
 └── README.md
 ```
 
 Adding a new framework: create `frameworks/<name>/` with `EVAL.md` (probing instructions) and `checklist.md` (fillable template), then add the framework to the dispatch table in `SKILL.md`.
+
+Adding a new evaluation dimension (e.g. security): nest under the parent framework at `frameworks/<framework>/<dimension>/`, extend the existing skill with flags (`--security`, `--all`), and do **not** add the dimension to the Framework Dispatch table.

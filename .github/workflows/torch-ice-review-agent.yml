@@ -1,0 +1,78 @@
+name: Review Agent
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  # GitHub evaluates reactions to comments on pull requests against this
+  # permission, even though the REST endpoint is under /issues/comments.
+  pull-requests: write
+
+concurrency:
+  group: torch-ice-review-agent-${{ github.event.issue.number }}
+  # GitHub permits one running workflow per group; keep an active requested
+  # review instead of canceling it for a newer comment.
+  cancel-in-progress: false
+
+jobs:
+  review:
+    # A workflow run can be created for any issue comment, but only a trusted
+    # PR commenter can enter the job. Command recognition is done by the
+    # script, because GitHub expressions cannot safely express line anchors.
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '@torch-ice-review-agent') &&
+      (github.event.comment.author_association == 'OWNER' ||
+       github.event.comment.author_association == 'MEMBER' ||
+       github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out trusted default branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          path: trusted-base
+          persist-credentials: false
+
+      - name: Validate torch-ice-review-agent command
+        id: command
+        working-directory: trusted-base
+        run: node .github/scripts/torch-ice-review-agent.mjs --validate
+
+      - name: Resolve exact PR base
+        if: steps.command.outputs.accepted == 'true'
+        id: pr
+        working-directory: trusted-base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node .github/scripts/torch-ice-review-agent.mjs --base-sha
+
+      - name: Check out exact PR base without executing it
+        if: steps.command.outputs.accepted == 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: ${{ steps.pr.outputs.base_sha }}
+          path: pr-base
+          persist-credentials: false
+
+      - name: Check out PR head without executing it
+        if: steps.command.outputs.accepted == 'true'
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.0.0
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          path: pr-head
+          persist-credentials: false
+
+      - name: Run read-only PR review
+        if: steps.command.outputs.accepted == 'true'
+        working-directory: trusted-base
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PR_BASE_CHECKOUT_PATH: ${{ github.workspace }}/pr-base
+          PR_CHECKOUT_PATH: ${{ github.workspace }}/pr-head
+        run: node .github/scripts/torch-ice-review-agent.mjs
